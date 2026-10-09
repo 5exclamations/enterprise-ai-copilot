@@ -1,5 +1,7 @@
 # Enterprise AI Operations Copilot
 
+[![CI](https://github.com/5exclamations/enterprise-ai-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/5exclamations/enterprise-ai-copilot/actions/workflows/ci.yml)
+
 A full-stack, multi-tenant AI assistant for a fictional B2B distributor. It answers questions over **company documents, products, inventory and orders**, cites its sources, shows every tool call, and **never changes data without an explicit human confirmation**.
 
 It is built to demonstrate production-minded LLM engineering rather than a chatbot wrapper: hybrid RAG, typed tool calling, structured-output validation, layered guardrails, an evaluation harness with measured results, and a real product UI.
