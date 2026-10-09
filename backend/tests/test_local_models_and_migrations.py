@@ -147,10 +147,10 @@ def test_migration_adopts_pre_alembic_database_without_losing_data(tmp_path):
 
 # ------------------------------------------------------------------------------- reindexing
 class FakeEmbedder:
-    name, dim = "fake-neural", 4
+    name, dim = "fake-neural", 256  # must match the vector(256) column on PostgreSQL
 
     def embed(self, texts):
-        return [[float(len(t) % 7), 1.0, 0.0, 0.0] for t in texts]
+        return [[float(len(t) % 7), 1.0] + [0.0] * 254 for t in texts]
 
     def embed_query(self, text):
         return self.embed([text])[0]
@@ -162,7 +162,7 @@ def test_reindex_reembeds_only_stale_chunks(db):
     out = reindex(db, FakeEmbedder())
     assert out["reembedded"] == n and out["model"] == "fake-neural"
     assert {c.embedding_model for c in db.scalars(select(Chunk))} == {"fake-neural"}
-    assert all(len(c.embedding) == 4 for c in db.scalars(select(Chunk)))
+    assert all(len(c.embedding) == 256 for c in db.scalars(select(Chunk)))
     assert reindex(db, FakeEmbedder())["reembedded"] == 0  # idempotent
     assert reindex(db, FakeEmbedder(), force=True)["reembedded"] == n
 
