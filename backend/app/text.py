@@ -7,7 +7,7 @@ STOPWORDS = frozenset(
     """a an the and or but if then of to in on at by for with from as is are was were be been being
     do does did have has had this that these those it its i we you they he she them our your their
     what which who whom when where why how can could should would will shall may might must not no
-    about into over under than so such any all each per there here also just""".split()
+    about into over under than so such any all each per there here also just me my us""".split()
 )
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+(?:[-'][a-z0-9]+)*")

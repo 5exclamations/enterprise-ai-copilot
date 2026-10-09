@@ -1,0 +1,12 @@
+{"id": "hard-01", "question": "can I send back something I bought last month", "retrieved": ["Returns and Refund Policy"], "category": "document_retrieval"}
+{"id": "hard-02", "question": "what happens if my invoice is paid late", "retrieved": ["Credit and Payment Terms"], "category": "document_retrieval"}
+{"id": "hard-03", "question": "how fast will my parcel arrive", "retrieved": ["Shipping and Delivery Policy"], "category": "document_retrieval"}
+{"id": "hard-04", "question": "who signs off on big stock purchases", "retrieved": ["Inventory Replenishment SOP"], "category": "document_retrieval"}
+{"id": "hard-05", "question": "are we open on December 25", "retrieved": ["Support Hours and Holidays"], "category": "document_retrieval"}
+{"id": "hard-06", "question": "what training do staff need for handling solvents", "retrieved": ["Hazardous Materials Handling"], "category": "document_retrieval"}
+{"id": "hard-07", "question": "can customers pay with a Visa", "retrieved": ["Credit and Payment Terms"], "category": "document_retrieval"}
+{"id": "hard-08", "question": "does the guarantee cover damage from misuse", "retrieved": ["Warranty Policy"], "category": "document_retrieval"}
+{"id": "hard-09", "question": "what is the discount for loyal big customers", "retrieved": ["Pricing and Discounts"], "category": "document_retrieval"}
+{"id": "hard-10", "question": "how do new vendors get approved", "retrieved": ["Supplier Onboarding Guide"], "category": "document_retrieval"}
+{"id": "hard-11", "question": "can I cancel something that already left the warehouse", "retrieved": ["Order Cancellation and Changes"], "category": "document_retrieval"}
+{"id": "hard-12", "question": "who can see customer phone numbers", "retrieved": ["Data Privacy and Security Policy"], "category": "document_retrieval"}

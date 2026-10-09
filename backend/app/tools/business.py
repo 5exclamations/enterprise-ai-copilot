@@ -67,7 +67,8 @@ def search_products(ctx: ToolContext, a: SearchProductsArgs) -> ToolOutput:
         q = q.where(func.lower(Product.category) == a.category.lower())
     if a.max_price is not None:
         q = q.where(Product.unit_price <= Decimal(str(a.max_price)))
-    terms = [t for t in dict.fromkeys(tokenize(a.query)) if t not in _NOISE]
+    terms = [t for t in dict.fromkeys(tokenize(a.query)) if t not in _NOISE
+             and not (a.max_price is not None and t.replace('.', '').isdigit())]
     scored = []
     for p in ctx.db.scalars(q):
         hay = set(tokenize(f"{p.sku} {p.name} {p.category} {p.description}"))

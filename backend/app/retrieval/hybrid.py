@@ -124,12 +124,12 @@ class HybridRetriever:
 
     # --------------------------------------------------------------------- search
     def search(self, tenant_id: int, query: str, k: int | None = None, filters: Filters | None = None,
-               w_semantic: float = 1.0, w_keyword: float = 1.0) -> list[Hit]:
+               w_semantic: float = 1.0, w_keyword: float = 1.0, mode: str = "hybrid") -> list[Hit]:
         k = k or get_settings().retrieval_top_k
         f = filters or Filters()
         qvec = self.embedder.embed([query])[0]
-        sem = self._semantic(tenant_id, qvec, f)
-        kw, terms = self._keyword(tenant_id, query, f)
+        sem = self._semantic(tenant_id, qvec, f) if mode in ("hybrid", "semantic") else []
+        kw, terms = self._keyword(tenant_id, query, f) if mode in ("hybrid", "keyword") else ([], tokenize(query))
 
         fused: dict[int, Hit] = {}
 
