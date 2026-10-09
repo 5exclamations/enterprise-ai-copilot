@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "timestamp": "2026-10-09 16:18 UTC",
+    "provider": "mock",
+    "model": "mock-rules-v1",
+    "embedder": "hashing-v1",
+    "dataset_size": 80,
+    "git": "5fbb896",
+    "seconds": 2.8
+  },
+  "retrieval_ablation": {
+    "standard (agent dataset)": {
+      "semantic": {
+        "recall@1": 1.0,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "n": 17
+      },
+      "keyword": {
+        "recall@1": 0.941,
+        "recall@3": 0.941,
+        "recall@5": 0.941,
+        "mrr": 0.941,
+        "n": 17
+      },
+      "hybrid": {
+        "recall@1": 1.0,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "n": 17
+      }
+    },
+    "hard paraphrase": {
+      "semantic": {
+        "recall@1": 0.667,
+        "recall@3": 0.667,
+        "recall@5": 0.667,
+        "mrr": 0.667,
+        "n": 12
+      },
+      "keyword": {
+        "recall@1": 0.333,
+        "recall@3": 0.417,
+        "recall@5": 0.417,
+        "mrr": 0.375,
+        "n": 12
+      },
+      "hybrid": {
+        "recall@1": 0.667,
+        "recall@3": 0.667,
+        "recall@5": 0.667,
+        "mrr": 0.667,
+        "n": 12
+      }
+    }
+  }
+}

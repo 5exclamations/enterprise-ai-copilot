@@ -70,6 +70,7 @@ class Chunk(Base):
     page: Mapped[int | None] = mapped_column(nullable=True)
     token_count: Mapped[int] = mapped_column(default=0)
     embedding: Mapped[list[float] | None] = mapped_column(EmbeddingType(), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(sa.String(120), nullable=True)  # which model made `embedding`
     flagged: Mapped[bool] = mapped_column(default=False)  # prompt-injection quarantine
     flag_reason: Mapped[str | None] = mapped_column(sa.String(300), nullable=True)
     document: Mapped[Document] = relationship(back_populates="chunks")

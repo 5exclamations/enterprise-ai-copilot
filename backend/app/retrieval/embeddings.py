@@ -3,8 +3,10 @@
 * `HashingEmbedder` - deterministic, dependency-free, offline. Signed feature hashing of
   unigrams / bigrams / char-trigrams plus a tiny synonym table. It is lexical-plus, NOT a
   neural model; it exists so the whole system runs and tests without credentials.
-* `OpenAICompatEmbedder` - any OpenAI-compatible `/embeddings` endpoint (OpenAI, Ollama,
-  vLLM, LM Studio...). Use this for genuinely semantic retrieval.
+* `OllamaEmbedder` - a real neural model served locally by Ollama (`/api/embed`), e.g.
+  `nomic-embed-text` (768-d). Supports asymmetric query/document task prefixes.
+* `OpenAICompatEmbedder` - any OpenAI-compatible `/embeddings` endpoint (OpenAI, vLLM,
+  LM Studio...). Use this for genuinely semantic retrieval against a hosted service.
 """
 from __future__ import annotations
 
@@ -22,7 +24,13 @@ class Embedder(Protocol):
     name: str
     dim: int
 
-    def embed(self, texts: list[str]) -> list[list[float]]: ...
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed documents/chunks."""
+        ...
+
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a search query (some models use a different task prefix than for documents)."""
+        ...
 
 
 class HashingEmbedder:
@@ -57,6 +65,9 @@ class HashingEmbedder:
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [self._embed_one(t) for t in texts]
 
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed_one(text)
+
 
 class OpenAICompatEmbedder:
     def __init__(self, settings: Settings, client: httpx.Client | None = None):
@@ -64,9 +75,11 @@ class OpenAICompatEmbedder:
         self.dim = settings.embedding_dim
         self._base = settings.openai_base_url.rstrip("/")
         self._key = settings.openai_api_key
+        self._qp = settings.embedding_query_prefix
+        self._dp = settings.embedding_document_prefix
         self._client = client or httpx.Client(timeout=settings.llm_timeout_seconds)
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def _call(self, texts: list[str]) -> list[list[float]]:
         headers = {"Authorization": f"Bearer {self._key}"} if self._key else {}
         out: list[list[float]] = []
         for i in range(0, len(texts), 64):
@@ -81,9 +94,53 @@ class OpenAICompatEmbedder:
         if out and len(out[0]) != self.dim:
             raise ValueError(
                 f"Embedding model returned {len(out[0])} dims but EMBEDDING_DIM={self.dim}; "
-                "the vector column must be re-created to change dimensions."
+                "set EMBEDDING_DIM to match and run `alembic upgrade head` + `python -m app.reindex`."
             )
         return out
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return self._call([self._dp + t for t in texts])
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._call([self._qp + text])[0]
+
+
+class OllamaEmbedder:
+    """Neural embeddings from a local Ollama server."""
+
+    def __init__(self, settings: Settings, client: httpx.Client | None = None):
+        self.name = settings.embedding_model
+        self.dim = settings.embedding_dim
+        self._base = settings.ollama_base_url.rstrip("/")
+        self._keep_alive = settings.ollama_keep_alive
+        self._qp = settings.embedding_query_prefix
+        self._dp = settings.embedding_document_prefix
+        self._client = client or httpx.Client(timeout=settings.ollama_timeout_seconds)
+
+    def _call(self, texts: list[str]) -> list[list[float]]:
+        out: list[list[float]] = []
+        for i in range(0, len(texts), 16):
+            try:
+                r = self._client.post(f"{self._base}/api/embed", json={
+                    "model": self.name, "input": texts[i : i + 16], "keep_alive": self._keep_alive})
+            except httpx.TransportError as exc:
+                raise RuntimeError(f"Ollama unavailable at {self._base}: {exc}") from exc
+            if r.status_code == 404:
+                raise RuntimeError(f"Ollama embedding model '{self.name}' not found; run `ollama pull {self.name}`")
+            r.raise_for_status()
+            out.extend(r.json()["embeddings"])
+        if out and len(out[0]) != self.dim:
+            raise ValueError(
+                f"Embedding model '{self.name}' returned {len(out[0])} dims but EMBEDDING_DIM={self.dim}; "
+                "set EMBEDDING_DIM to match and run `alembic upgrade head` + `python -m app.reindex`."
+            )
+        return out
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return self._call([self._dp + t for t in texts])
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._call([self._qp + text])[0]
 
 
 _cached: Embedder | None = None
@@ -93,7 +150,9 @@ def get_embedder(settings: Settings | None = None) -> Embedder:
     global _cached
     settings = settings or get_settings()
     if _cached is None:
-        if settings.embedding_provider == "openai":
+        if settings.embedding_provider == "ollama":
+            _cached = OllamaEmbedder(settings)
+        elif settings.embedding_provider == "openai":
             _cached = OpenAICompatEmbedder(settings)
         else:
             _cached = HashingEmbedder(settings.embedding_dim)

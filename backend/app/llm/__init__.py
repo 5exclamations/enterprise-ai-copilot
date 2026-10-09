@@ -14,6 +14,10 @@ def get_provider(settings: Settings | None = None) -> LLMProvider:
         from .mock import MockProvider
 
         return MockProvider()
+    if name == "ollama":
+        from .ollama_provider import OllamaProvider
+
+        return OllamaProvider(s)
     if name == "openai":
         from .openai_provider import OpenAICompatProvider
 
@@ -24,4 +28,4 @@ def get_provider(settings: Settings | None = None) -> LLMProvider:
         if not s.anthropic_api_key:
             raise LLMError("LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
         return AnthropicProvider(s)
-    raise LLMError(f"Unknown LLM_PROVIDER '{s.llm_provider}' (expected mock, openai or anthropic)")
+    raise LLMError(f"Unknown LLM_PROVIDER '{s.llm_provider}' (expected mock, ollama, openai or anthropic)")

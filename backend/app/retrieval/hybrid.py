@@ -127,7 +127,7 @@ class HybridRetriever:
                w_semantic: float = 1.0, w_keyword: float = 1.0, mode: str = "hybrid") -> list[Hit]:
         k = k or get_settings().retrieval_top_k
         f = filters or Filters()
-        qvec = self.embedder.embed([query])[0]
+        qvec = self.embedder.embed_query(query) if hasattr(self.embedder, "embed_query") else self.embedder.embed([query])[0]
         sem = self._semantic(tenant_id, qvec, f) if mode in ("hybrid", "semantic") else []
         kw, terms = self._keyword(tenant_id, query, f) if mode in ("hybrid", "keyword") else ([], tokenize(query))
 

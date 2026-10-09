@@ -53,13 +53,13 @@ def _build_chunks(doc: Document, filename: str, data: bytes, embedder: Embedder,
             flagged=flagged, flag_reason=",".join(scan.matches) if flagged else None,
         )
         if row.content_hash in reuse:
-            row.embedding = reuse[row.content_hash]
+            row.embedding, row.embedding_model = reuse[row.content_hash], embedder.name
         else:
             to_embed.append(row)
         rows.append(row)
     if to_embed:
         for row, vec in zip(to_embed, embedder.embed([r.search_text for r in to_embed])):
-            row.embedding = vec
+            row.embedding, row.embedding_model = vec, embedder.name
     return parsed, meta, rows, len(to_embed), len(rows) - len(to_embed), quarantined
 
 
@@ -90,7 +90,8 @@ def update_document(db: Session, *, doc: Document, user_id: int | None, filename
     if new_hash == doc.content_hash and not title and not category:
         n = len(doc.chunks)
         return IngestResult(doc, n, 0, n, sum(c.flagged for c in doc.chunks), unchanged=True)
-    old = {c.content_hash: c.embedding for c in doc.chunks if c.embedding is not None}
+    # Only reuse vectors made by the same embedding model; vectors from different models are not comparable.
+    old = {c.content_hash: c.embedding for c in doc.chunks if c.embedding is not None and c.embedding_model == embedder.name}
     _, meta, rows, n_emb, n_reuse, n_quar = _build_chunks(
         doc, filename, data, embedder, old, title or None, category or None)
     db.execute(delete(Chunk).where(Chunk.document_id == doc.id))
