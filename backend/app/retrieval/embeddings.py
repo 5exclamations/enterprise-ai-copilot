@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import math
+import time
 import zlib
 from typing import Protocol
 
@@ -117,14 +118,24 @@ class OllamaEmbedder:
         self._dp = settings.embedding_document_prefix
         self._client = client or httpx.Client(timeout=settings.ollama_timeout_seconds)
 
+    def _post_with_retry(self, body: dict, attempts: int = 4) -> httpx.Response:
+        """Ollama can answer 5xx/drop the connection while it (re)loads a model; retry with backoff."""
+        last: Exception | None = None
+        for n in range(attempts):
+            try:
+                r = self._client.post(f"{self._base}/api/embed", json=body)
+                if r.status_code < 500:
+                    return r
+                last = RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+            except httpx.TransportError as exc:
+                last = exc
+            time.sleep(min(2 ** n, 8))
+        raise RuntimeError(f"Ollama embedding unavailable at {self._base} after {attempts} attempts: {last}")
+
     def _call(self, texts: list[str]) -> list[list[float]]:
         out: list[list[float]] = []
         for i in range(0, len(texts), 16):
-            try:
-                r = self._client.post(f"{self._base}/api/embed", json={
-                    "model": self.name, "input": texts[i : i + 16], "keep_alive": self._keep_alive})
-            except httpx.TransportError as exc:
-                raise RuntimeError(f"Ollama unavailable at {self._base}: {exc}") from exc
+            r = self._post_with_retry({"model": self.name, "input": texts[i : i + 16], "keep_alive": self._keep_alive})
             if r.status_code == 404:
                 raise RuntimeError(f"Ollama embedding model '{self.name}' not found; run `ollama pull {self.name}`")
             r.raise_for_status()

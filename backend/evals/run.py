@@ -316,6 +316,8 @@ def main() -> int:
     ap.add_argument("--resume", action="store_true", help="(default behaviour) continue a compatible checkpoint; kept for compatibility")
     ap.add_argument("--fresh", action="store_true", help="back up and discard the existing checkpoint, start over")
     ap.add_argument("--adopt-legacy", action="store_true", help="adopt a checkpoint written before manifests existed")
+    ap.add_argument("--accept-code-change", action="store_true",
+                    help="resume although app/ source changed (only if code_sha is the sole difference); recorded in the manifest")
     ap.add_argument("--max-cases", type=int, help="run at most N not-yet-completed cases this invocation (batching)")
     ap.add_argument("--status", action="store_true", help="only report checkpoint progress; run nothing")
     ap.add_argument("--finalize-with-errors", action="store_true",
@@ -379,7 +381,8 @@ def main() -> int:
     }
     ckpt = Checkpoint(results_path.with_suffix(".partial.jsonl"))
     try:
-        state = ckpt.open_for_run(manifest, adopt_legacy=args.adopt_legacy, fresh=args.fresh)
+        state = ckpt.open_for_run(manifest, adopt_legacy=args.adopt_legacy, fresh=args.fresh,
+                                  accept_code_change=args.accept_code_change)
     except IncompatibleCheckpoint as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -389,7 +392,7 @@ def main() -> int:
     print(f"checkpoint {ckpt.path.name}: {len(done)}/{len(cases)} cases already completed, "
           f"{sum(1 for r in state.records.values() if r['status'] == 'error')} errored (will be retried)", file=sys.stderr)
 
-    ran = 0
+    ran = batch_err = 0
     if not args.status:
         for case in cases:
             if case["id"] in done:
@@ -409,11 +412,15 @@ def main() -> int:
             ckpt.append(rec)
             if rec["status"] == "error":
                 state.errors.append(rec)
+                batch_err += 1
             ran += 1
             print(("PASS" if rec["passed"] else ("ERROR" if rec["status"] == "error" else "FAIL")), case["id"],
                   rec["failed_checks"] or "", f"{rec['latency_ms'] / 1000:.0f}s", file=sys.stderr, flush=True)
         state = ckpt.load()
 
+    if ran and batch_err == ran:
+        print("\nNo progress: every case in this batch errored (is the model server healthy?). Stopping.", file=sys.stderr)
+        return 4
     by_id = state.records
     have = [by_id[c["id"]] for c in cases if c["id"] in by_id]
     ok = [r for r in have if r["status"] == "ok"]

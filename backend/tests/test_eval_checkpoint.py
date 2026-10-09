@@ -72,6 +72,20 @@ def test_incompatible_configuration_is_rejected(tmp_path, field, value):
     assert ck.load().completed_ids() == {"a"}  # nothing was lost or modified
 
 
+def test_code_change_needs_explicit_acceptance_and_is_audited(tmp_path):
+    ck = Checkpoint(tmp_path / "r.jsonl")
+    ck.open_for_run(MANIFEST)
+    ck.append(rec("a"))
+    changed = {**MANIFEST, "code_sha": "c2", "git": "def"}
+    with pytest.raises(IncompatibleCheckpoint, match="code_sha"):
+        ck.open_for_run(changed)
+    s = ck.open_for_run(changed, accept_code_change=True)
+    assert s.completed_ids() == {"a"} and s.manifest["code_sha_history"][0]["code_sha"] == "c"
+    assert ck.open_for_run(changed).completed_ids() == {"a"}  # now compatible without the flag
+    with pytest.raises(IncompatibleCheckpoint, match="model"):  # the override never covers other fields
+        ck.open_for_run({**changed, "model": "x", "code_sha": "c3"}, accept_code_change=True)
+
+
 def test_git_revision_alone_does_not_invalidate(tmp_path):
     ck = Checkpoint(tmp_path / "r.jsonl")
     ck.open_for_run(MANIFEST)

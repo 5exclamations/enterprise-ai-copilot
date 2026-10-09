@@ -133,7 +133,8 @@ class Checkpoint:
         os.replace(tmp, self.path)  # atomic on POSIX and Windows
 
     # ------------------------------------------------------------------ session
-    def open_for_run(self, manifest: dict, *, adopt_legacy: bool = False, fresh: bool = False) -> Loaded:
+    def open_for_run(self, manifest: dict, *, adopt_legacy: bool = False, fresh: bool = False,
+                     accept_code_change: bool = False) -> Loaded:
         """Return prior state for a compatible checkpoint, or initialise a new one.
 
         Raises IncompatibleCheckpoint if an existing checkpoint was produced under a different configuration.
@@ -162,6 +163,16 @@ class Checkpoint:
             return self.load()
         if loaded.manifest.get("fingerprint") != want:
             diff = [k for k in FINGERPRINT_KEYS if loaded.manifest.get(k) != manifest.get(k)]
+            if diff == ["code_sha"] and accept_code_change:
+                # Explicit, audited override: the operator asserts the code change does not affect results
+                # (e.g. a transport retry). Everything else (models, prompt, dataset, embeddings) still must match.
+                history = [*loaded.manifest.get("code_sha_history", []), {"code_sha": loaded.manifest.get("code_sha"),
+                                                                           "git": loaded.manifest.get("git")}]
+                new = {**loaded.manifest, "code_sha": manifest["code_sha"], "git": manifest.get("git"), "code_sha_history": history}
+                new["fingerprint"] = fingerprint(new)
+                body = self.path.read_text(encoding="utf-8").splitlines()[1:]
+                self._write_all([json.dumps({"manifest": new}), *body])
+                return self.load()
             raise IncompatibleCheckpoint(
                 f"checkpoint {self.path.name} was made with a different configuration (changed: {', '.join(diff) or 'unknown'}). "
                 "Use a different --tag for a separate run, or --fresh to discard it.")
