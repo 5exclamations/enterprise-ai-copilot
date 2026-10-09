@@ -14,3 +14,5 @@ frontend/out/
 .DS_Store
 backend/sample_data/documents/helix/*.pdf
 *.egg-info/
+eval_ollama.log
+backend/evals/results/*.partial.jsonl

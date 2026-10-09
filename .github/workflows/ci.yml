@@ -30,6 +30,14 @@ jobs:
           TEST_DATABASE_URL: postgresql+psycopg://copilot:ci_only_password@localhost:5432/copilot_test
           DATABASE_URL: postgresql+psycopg://copilot:ci_only_password@localhost:5432/copilot_test
         run: pytest -q
+      - name: Migrations apply cleanly on PostgreSQL + pgvector (incl. 256 -> 768 resize) and round-trip
+        env:
+          DATABASE_URL: postgresql+psycopg://copilot:ci_only_password@localhost:5432/copilot_migrate
+        run: |
+          PGPASSWORD=ci_only_password psql -h localhost -U copilot -d copilot_test -c "CREATE DATABASE copilot_migrate"
+          alembic upgrade head
+          alembic downgrade 0002 && EMBEDDING_DIM=768 alembic upgrade head
+          alembic downgrade base && alembic upgrade head
       - name: Evaluation (mock provider) with regression gate
         run: python -m evals.run --min-pass 0.90
       - uses: actions/upload-artifact@v4

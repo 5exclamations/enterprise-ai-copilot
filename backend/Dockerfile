@@ -5,6 +5,8 @@ COPY pyproject.toml ./
 RUN mkdir -p app evals && touch app/__init__.py evals/__init__.py && pip install . && pip uninstall -y enterprise-ai-copilot
 COPY app ./app
 COPY evals ./evals
+COPY alembic.ini ./
+COPY migrations ./migrations
 COPY sample_data ./sample_data
 COPY docker-entrypoint.sh ./
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser /srv

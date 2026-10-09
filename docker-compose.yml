@@ -32,12 +32,19 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-hashing}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-256}
+      EMBEDDING_QUERY_PREFIX: ${EMBEDDING_QUERY_PREFIX:-}
+      EMBEDDING_DOCUMENT_PREFIX: ${EMBEDDING_DOCUMENT_PREFIX:-}
+      # Ollama runs on the host (not in this stack); host.docker.internal reaches it from the container.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       SEED_ON_START: ${SEED_ON_START:-true}
       DEMO_MODE: ${DEMO_MODE:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
+    extra_hosts: ["host.docker.internal:host-gateway"]
     ports: ["8000:8000"]
   frontend:
     build:

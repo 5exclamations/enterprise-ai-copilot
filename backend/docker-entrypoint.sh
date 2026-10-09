@@ -1,15 +1,17 @@
 #!/bin/sh
 set -e
-# Create extension/tables/indexes (idempotent) and seed demo data only when the DB is empty.
+# Apply Alembic migrations (creates extension/tables/indexes; adopts pre-Alembic databases), then seed demo data only when the DB is empty.
 python - <<'PY'
 import os, time
 from sqlalchemy import select, func
-from app.db import init_db, SessionLocal
+from alembic import command
+from alembic.config import Config
+from app.db import SessionLocal
 from app.models import Tenant
 
 for attempt in range(30):
     try:
-        init_db()
+        command.upgrade(Config('alembic.ini'), 'head')
         break
     except Exception as exc:  # database still starting
         print(f"waiting for database ({exc.__class__.__name__})...", flush=True)
