@@ -318,6 +318,7 @@ def main() -> int:
     ap.add_argument("--adopt-legacy", action="store_true", help="adopt a checkpoint written before manifests existed")
     ap.add_argument("--accept-code-change", action="store_true",
                     help="resume although app/ source changed (only if code_sha is the sole difference); recorded in the manifest")
+    ap.add_argument("--no-retry-errors", action="store_true", help="do not re-run cases whose latest record is an error (use with --finalize-with-errors)")
     ap.add_argument("--max-cases", type=int, help="run at most N not-yet-completed cases this invocation (batching)")
     ap.add_argument("--status", action="store_true", help="only report checkpoint progress; run nothing")
     ap.add_argument("--finalize-with-errors", action="store_true",
@@ -395,7 +396,7 @@ def main() -> int:
     ran = batch_err = 0
     if not args.status:
         for case in cases:
-            if case["id"] in done:
+            if case["id"] in done or (args.no_retry_errors and case["id"] in state.records):
                 continue
             if args.max_cases and ran >= args.max_cases:
                 break
@@ -418,7 +419,7 @@ def main() -> int:
                   rec["failed_checks"] or "", f"{rec['latency_ms'] / 1000:.0f}s", file=sys.stderr, flush=True)
         state = ckpt.load()
 
-    if ran and batch_err == ran:
+    if ran and batch_err == ran and not args.finalize_with_errors:
         print("\nNo progress: every case in this batch errored (is the model server healthy?). Stopping.", file=sys.stderr)
         return 4
     by_id = state.records

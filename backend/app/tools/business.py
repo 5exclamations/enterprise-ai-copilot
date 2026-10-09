@@ -255,6 +255,13 @@ class SearchDocsArgs(StrictArgs):
 def search_documents(ctx: ToolContext, a: SearchDocsArgs) -> ToolOutput:
     hits = ctx.retriever.search(ctx.principal.tenant_id, a.query, k=a.limit,
                                 filters=Filters(category=a.category))
+    relaxed = False
+    if not hits and a.category:
+        # `category` is a hint the model chooses, not a user constraint: small models often guess it wrongly
+        # (measured: qwen2.5:3b sent "legal"/"other" for returns/spill/retention questions and found nothing).
+        # Retry without it. The tenant filter is part of the same query and is never relaxed.
+        hits = ctx.retriever.search(ctx.principal.tenant_id, a.query, k=a.limit, filters=Filters())
+        relaxed = bool(hits)
     if not hits:
         return ToolOutput(summary="No relevant passages found in company documents.", data={"passages": []})
     passages = [{
@@ -265,7 +272,8 @@ def search_documents(ctx: ToolContext, a: SearchDocsArgs) -> ToolOutput:
         "category": h.category, "version": h.doc_version,
     } for h in hits]
     return ToolOutput(
-        summary=f"Retrieved {len(hits)} passage(s) from: " + ", ".join(dict.fromkeys(h.document_title for h in hits)) + ".",
+        summary=f"Retrieved {len(hits)} passage(s) from: " + ", ".join(dict.fromkeys(h.document_title for h in hits)) + "."
+        + (f" (No documents matched category '{a.category}', so the category filter was ignored.)" if relaxed else ""),
         data={"passages": passages},
         sources=[Source(id=h.source_id, type="document", title=h.document_title + (f" · {h.section.split(' > ')[-1]}" if h.section and h.section.split(" > ")[-1] != h.document_title else ""),
                         snippet=redact_secrets(h.content[:240]).text, meta={"page": h.page, "document_id": h.document_id,

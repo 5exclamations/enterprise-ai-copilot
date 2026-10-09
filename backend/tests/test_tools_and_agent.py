@@ -77,3 +77,17 @@ def test_decimal_money_is_exact():
     from app.services.pricing import Line, quote
     q = quote([Line("A-1", "x", 3, Decimal("0.10"))])
     assert q.subtotal == Decimal("0.30")
+
+
+def test_wrong_category_hint_is_relaxed_but_never_crosses_tenants(db, manager, verdant):
+    exact = run(db, manager, "search_documents", query="return window days after delivery").output
+    assert exact.data["passages"]
+    # a model guessed the wrong category: the correct document must still be found, and the tool says so
+    wrong = run(db, manager, "search_documents", query="return window days after delivery", category="support")
+    wrong2 = run(db, manager, "search_documents", query="return window days after delivery", category="legal")
+    relaxed = [r for r in (wrong, wrong2) if "category filter was ignored" in r.output.summary]
+    assert wrong.ok and wrong2.ok and (relaxed or all(r.output.data["passages"] for r in (wrong, wrong2)))
+    # fallback is still tenant-scoped
+    helix_docs = {p["document_id"] for p in exact.data["passages"]}
+    other = run(db, verdant, "search_documents", query="return window days after delivery", category="legal").output
+    assert not helix_docs & {p["document_id"] for p in other.data["passages"]}
