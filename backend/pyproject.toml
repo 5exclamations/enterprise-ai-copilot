@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "enterprise-ai-copilot"
+version = "1.0.0"
+description = "Enterprise AI operations copilot: RAG, tool calling, guardrails and evaluation"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "sqlalchemy>=2.0,<3",
+  "psycopg[binary]>=3.2,<4",
+  "pgvector>=0.3,<1",
+  "pydantic>=2.8,<3",
+  "pydantic-settings>=2.4,<3",
+  "python-multipart>=0.0.9",
+  "pypdf>=5,<7",
+  "numpy>=1.26,<3",
+  "httpx>=0.27,<1",
+  "redis>=5,<7",
+  "fpdf2>=2.8,<3",   # generates the sample PDFs at seed time
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+pgtest = ["pgserver>=0.1.4"]  # throwaway local Postgres+pgvector (scripts/pg_test.py); CI uses a service container instead
+
+[tool.setuptools.packages.find]
+include = ["app*", "evals*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+extend-exclude = [".venv", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = [
+  "E501",   # long lines are formatted manually
+  "S101",   # asserts are used in tests
+  "S311", "B008", "UP007", "UP045", "B905",
+  "E741",   # short lambda/comprehension names
+  "S608",   # no string-built SQL exists; flagged only on harmless f-strings
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B011", "B017", "E702", "E701"]
+"app/seed.py" = ["S105", "S106"]  # demo API keys are intentional, local-only values
+"evals/*" = ["S603", "S607"]

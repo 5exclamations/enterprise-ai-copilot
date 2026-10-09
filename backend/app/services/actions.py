@@ -6,7 +6,7 @@ clicking a button); it is deliberately not reachable from any LLM tool.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal, Union
 
@@ -214,6 +214,5 @@ def _execute(db: Session, tenant_id: int, p) -> dict:
 
 
 def _aware(dt):
-    from datetime import timezone
 
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)

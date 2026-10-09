@@ -6,6 +6,7 @@ storage (no salt/slow hash needed, unlike passwords). Keys are never logged.
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -63,8 +64,8 @@ class RateLimiter:
                 if n == 1:
                     self._redis.expire(key, 70)
                 return n <= limit
-            except Exception:
-                pass
+            except Exception:  # Redis hiccup: fall back to the in-process window below
+                logging.getLogger(__name__).warning("redis rate limiter unavailable, using local window")
         window = self._local[user_id]
         while window and window[0] <= now - 60:
             window.popleft()

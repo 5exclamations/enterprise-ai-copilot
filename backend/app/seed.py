@@ -5,14 +5,14 @@ The API keys below are DEMO values for local use only (stored hashed in the data
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from .auth import hash_key
-from .db import SessionLocal, Base, engine, init_db
+from .db import Base, SessionLocal, engine, init_db
 from .models import Customer, Inventory, Order, OrderItem, Product, Tenant, User
 from .services.documents import ingest_document
 
@@ -116,7 +116,7 @@ def _add_tenant(db: Session, slug: str, name: str, products, customers, orders) 
     db.flush()
     for number, cname, status, date, ship, items in orders:
         o = Order(tenant_id=t.id, number=number, customer_id=custs[cname].id, status=status, shipping_method=ship,
-                  created_on=datetime.fromisoformat(date).replace(tzinfo=timezone.utc))
+                  created_on=datetime.fromisoformat(date).replace(tzinfo=UTC))
         o.items = [OrderItem(product_id=prods[s].id, quantity=q, unit_price=prods[s].unit_price) for s, q in items]
         db.add(o)
     db.flush()

@@ -7,7 +7,7 @@ import time
 import httpx
 
 from ..config import Settings
-from .base import LLMError, LLMMessage, LLMProvider, LLMResponse, ToolCall, ToolSpec, Usage
+from .base import LLMError, LLMMessage, LLMProvider, LLMResponse, ToolCall, Usage
 
 RETRYABLE = {408, 409, 429, 500, 502, 503, 504}
 

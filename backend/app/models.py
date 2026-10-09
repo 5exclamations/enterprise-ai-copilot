@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import sqlalchemy as sa
@@ -12,7 +12,7 @@ from .db import Base, EmbeddingType
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def new_id() -> str:
@@ -52,7 +52,7 @@ class Document(Base):
     uploaded_by: Mapped[int | None] = mapped_column(sa.ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    chunks: Mapped[list["Chunk"]] = relationship(
+    chunks: Mapped[list[Chunk]] = relationship(
         back_populates="document", cascade="all, delete-orphan", order_by="Chunk.chunk_index"
     )
 
@@ -89,7 +89,7 @@ class Product(Base):
     supplier: Mapped[str] = mapped_column(sa.String(120), default="")
     hazmat: Mapped[bool] = mapped_column(default=False)
     active: Mapped[bool] = mapped_column(default=True)
-    inventory: Mapped[list["Inventory"]] = relationship(back_populates="product", cascade="all, delete-orphan")
+    inventory: Mapped[list[Inventory]] = relationship(back_populates="product", cascade="all, delete-orphan")
 
 
 class Inventory(Base):
@@ -127,7 +127,7 @@ class Order(Base):
     created_on: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     notes: Mapped[str] = mapped_column(sa.Text, default="")
     customer: Mapped[Customer] = relationship()
-    items: Mapped[list["OrderItem"]] = relationship(back_populates="order", cascade="all, delete-orphan")
+    items: Mapped[list[OrderItem]] = relationship(back_populates="order", cascade="all, delete-orphan")
 
 
 class OrderItem(Base):

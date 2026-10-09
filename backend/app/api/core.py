@@ -38,7 +38,7 @@ def demo_users(db: Session = Depends(get_db)):
         raise HTTPException(404, "Not found")
     hashes = {hash_key(k): k for k in DEMO_KEYS.values()}
     out = []
-    for slug, label, name, email, role in USERS:
+    for _slug, label, name, email, role in USERS:
         u = db.scalar(select(User).where(User.email == email))
         if u and u.api_key_hash in hashes:
             out.append({"label": label, "name": name, "email": email, "role": role,

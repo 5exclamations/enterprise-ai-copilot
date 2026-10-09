@@ -14,7 +14,6 @@ from app.db import get_db, init_db, make_engine
 from app.main import create_app
 from app.models import User
 from app.seed import DEMO_KEYS, seed_database
-from app.retrieval.hybrid import HybridRetriever
 
 TEST_DB_URL = os.environ.get("TEST_DATABASE_URL")  # set to a pgvector Postgres to run the suite there
 

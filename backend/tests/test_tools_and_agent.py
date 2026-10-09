@@ -1,11 +1,12 @@
 from decimal import Decimal
 
+from sqlalchemy import select
+
 from app.agent import run_agent
 from app.models import AuditLog
 from app.retrieval.hybrid import HybridRetriever
 from app.tools.business import REGISTRY
 from app.tools.registry import ToolContext
-from sqlalchemy import select
 
 
 def ctx(db, p):

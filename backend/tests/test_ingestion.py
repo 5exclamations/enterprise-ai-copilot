@@ -1,10 +1,9 @@
-import io
 
 import pytest
 from fpdf import FPDF
 from sqlalchemy import select
 
-from app.models import Chunk, Document
+from app.models import Chunk
 from app.services import documents as svc
 
 MD = b"# Travel Policy\n\nEffective date: 2026-05-01\nVersion: 2.0\n\n## Flights\nEconomy class only. Book 14 days ahead.\n\n## Hotels\nMax $200 per night.\n"

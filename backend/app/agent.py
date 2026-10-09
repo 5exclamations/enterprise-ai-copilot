@@ -20,7 +20,7 @@ from .auth import Principal
 from .config import Settings, get_settings
 from .guardrails import injection
 from .guardrails.pii import redact_output, redact_secrets
-from .guardrails.validation import AssistantAnswer, InputRejected, parse_answer, sanitize_user_text
+from .guardrails.validation import AssistantAnswer, parse_answer, sanitize_user_text
 from .llm import LLMError, LLMMessage, LLMProvider, get_provider
 from .llm.pricing import estimate_cost
 from .models import AuditLog, ChatMessage, Conversation, Tenant, UsageLog
