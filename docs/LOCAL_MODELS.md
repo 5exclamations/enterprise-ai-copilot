@@ -75,7 +75,7 @@ round-trips `downgrade base` / `upgrade head`, and checks that a pre-Alembic dat
 
 ## Evaluation with real models
 
-See [EVAL_RESULTS_OLLAMA_QWEN2_5_3B_NOMIC_EMBED_TEXT.md](EVAL_RESULTS_OLLAMA_QWEN2_5_3B_NOMIC_EMBED_TEXT.md)
+See [REAL_MODEL_ANALYSIS.md](REAL_MODEL_ANALYSIS.md) (mock vs real, failure by failure), [EVAL_RESULTS_OLLAMA_QWEN2_5_3B_NOMIC_EMBED_TEXT.md](EVAL_RESULTS_OLLAMA_QWEN2_5_3B_NOMIC_EMBED_TEXT.md) (v2 report; v1 baseline is the `_V1_BASELINE` file)
 (full 80-case agent run) and [RETRIEVAL_NOMIC_EMBED_TEXT.md](RETRIEVAL_NOMIC_EMBED_TEXT.md) /
 [RETRIEVAL_HASHING_V1.md](RETRIEVAL_HASHING_V1.md) (retrieval ablation per embedder). Reproduce with:
 

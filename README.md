@@ -6,7 +6,7 @@ It is built to demonstrate production-minded LLM engineering rather than a chatb
 
 ![Chat with citations and tool execution](docs/images/03-chat-rag-citations-tools.png)
 
-> **Honesty note.** Everything in this repo runs and is tested **without any paid service**, using a deterministic *mock* LLM (rule-based, not a language model) and an offline hashing embedder. Real-provider adapters (OpenAI-compatible, Anthropic) are implemented and unit-tested against mocked HTTP, but **no live provider call has been made** because no API credentials were available. See [Known limitations](#known-limitations).
+> **Honesty note.** The default configuration (and CI) uses a deterministic *mock* LLM (rule-based, not a language model) and an offline hashing embedder, so everything runs and is tested without any service. A **real local model has also been run end-to-end**: `qwen2.5:3b` (chat + tool calling) and `nomic-embed-text` (neural embeddings) via Ollama on a 4 GB GPU - results are reported separately in [docs/REAL_MODEL_ANALYSIS.md](docs/REAL_MODEL_ANALYSIS.md) (**38/80 cases pass; the mock baseline is 74/80**, so do not read the mock number as model quality). OpenAI-compatible and Anthropic adapters are unit-tested against mocked HTTP only; no hosted provider has been called.
 
 ## Contents
 [Business problem](#business-problem) · [Features](#features) · [Architecture](#architecture) · [RAG pipeline](#rag-pipeline) · [Hybrid retrieval](#hybrid-retrieval) · [Agent and tool calling](#agent-and-tool-calling) · [Database schema](#database-schema) · [Security](#security-architecture) · [Evaluation](#evaluation) · [Screenshots](#screenshots) · [Setup](#setup) · [Demo scenarios](#demo-scenarios) · [Trade-offs](#engineering-trade-offs) · [Limitations](#known-limitations) · [Interview talking points](#interview-talking-points)
@@ -21,8 +21,8 @@ Operations staff at a distributor constantly ask questions that live in differen
 * **Seven typed tools** - `search_documents`, `search_products`, `check_stock`, `get_order`, `list_orders`, `calculate_order_total` (deterministic pricing, the model never does arithmetic), `draft_action`.
 * **Safe actions** - the model can only *draft*; execution is a separate authenticated human call that re-validates state, is idempotent, expires, and is audited. No arbitrary SQL anywhere.
 * **Guardrails** - input sanitising, prompt-injection tripwire, quarantine of poisoned document chunks, strict tool schemas, output schema validation, secret/PII redaction, RBAC, tenant isolation, rate limiting, upload validation.
-* **Provider abstraction** - `mock` (default), OpenAI-compatible (OpenAI, Ollama, vLLM...), Anthropic; one internal message/tool format.
-* **Evaluation framework** - 80 cases, retrieval ablation, security invariants, latency/tokens/cost; CI regression gate.
+* **Provider abstraction** - `mock` (default), native **Ollama** (local models, no key, $0), OpenAI-compatible (OpenAI, vLLM...), Anthropic; one internal message/tool format. Embeddings: offline hashing or neural (Ollama `nomic-embed-text`), with per-chunk model tracking, safe model switching (`alembic upgrade head` + `python -m app.reindex`) and **Alembic migrations**.
+* **Evaluation framework** - 80 cases, retrieval ablation, security invariants, latency/tokens/cost; CI regression gate on the deterministic mock; **resumable, fingerprinted checkpoints** for slow real-model runs.
 * **Frontend** - login with demo personas, chat with citations and a source drawer, tool-execution previews, approval dialogs, document management + retrieval inspector, inventory, orders, approvals, usage analytics, evaluation dashboard; responsive, with loading/error/empty states.
 
 ## Architecture
@@ -244,14 +244,21 @@ python scripts/smoke.py http://localhost:8000              # live HTTP smoke tes
 cd ../frontend && npx tsc --noEmit && npm run build
 ```
 
-### Using a real LLM (optional, not exercised in this repo)
+### Using a local model (Ollama) - exercised, see [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md)
 ```bash
-# OpenAI-compatible (OpenAI, Ollama at http://localhost:11434/v1, vLLM...)
+ollama pull qwen2.5:3b && ollama pull nomic-embed-text
+export LLM_PROVIDER=ollama LLM_MODEL=qwen2.5:3b EMBEDDING_PROVIDER=ollama EMBEDDING_MODEL=nomic-embed-text EMBEDDING_DIM=768        EMBEDDING_QUERY_PREFIX="search_query: " EMBEDDING_DOCUMENT_PREFIX="search_document: "
+cd backend && alembic upgrade head && python -m app.reindex        # schema + re-embed with the new model
+RUN_OLLAMA_TESTS=1 pytest -m ollama -q                              # opt-in real-model integration tests
+bash scripts/eval_ollama.sh                                         # resumable 80-case real-model eval (hours on small hardware)
+```
+
+### Using a hosted LLM (optional, not exercised in this repo)
+```bash
 LLM_PROVIDER=openai OPENAI_API_KEY=... LLM_MODEL=gpt-4o-mini LLM_PRICE_INPUT_PER_MTOK=... LLM_PRICE_OUTPUT_PER_MTOK=...
-# Anthropic
 LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=... LLM_MODEL=...
 ```
-Cost is reported as *unknown* unless you configure prices - it is never guessed. Then run `python -m evals.run --provider openai` to compare against the mock baseline.
+Cost is reported as *unknown* unless you configure prices (local Ollama is $0); it is never guessed.
 
 ## Demo scenarios
 Sign in as **Morgan Manager** unless noted. Demo users: Avery Admin, Morgan Manager, Vic Viewer (Helix tenant), Vera Manager (Verdant tenant).
@@ -276,12 +283,13 @@ Sign in as **Morgan Manager** unless noted. Demo users: Avery Admin, Morgan Mana
 * **API keys, not OIDC**: simple and explicit for the demo; not what I'd ship to end users.
 
 ## Known limitations
-* **No live LLM verification.** OpenAI/Anthropic adapters are tested only against mocked HTTP responses; real-model tool-calling behaviour, latency, cost and answer quality are untested. All evaluation numbers are from the deterministic mock.
+* **Real-model quality is low on this hardware.** `qwen2.5:3b` passes 38/80 (v2); multi-step 0/4, hallucination checks 0/5, tool selection 76%. Failures are mostly wrong tool choice and invalid arguments (see [docs/REAL_MODEL_ANALYSIS.md](docs/REAL_MODEL_ANALYSIS.md)). One prompt makes the model hang (counted as a failure). Single run per version; a stochastic model needs repeats for tight confidence. Hosted providers (OpenAI/Anthropic) were never called.
+* **The relevance floor does not separate answerable from unanswerable queries with neural embeddings** (score ranges overlap), so unanswerable questions can return and cite irrelevant passages. A reranker/relevance grader is the real fix.
 * Evaluation is substring-based (no LLM-judge or human grading), the corpus is small (14 documents), and I authored both documents and questions - treat scores as regression gates, not benchmarks.
-* Default embeddings are not neural; the hard-paraphrase recall (0.67) shows the ceiling.
+* The default hashing embedder is not neural (hard-paraphrase recall 0.67); with `nomic-embed-text` it is 1.00 (retrieval ablation), but that corpus is only 14 documents.
 * Multi-step reasoning is not exercised by the mock (2/4 multi-step cases fail by design of the mock).
-* Docker Compose was verified in **GitHub Actions** (clean Linux runner), not on the author's machine (the local Docker engine was unhealthy). No load testing; the in-memory rate limiter is per-process unless Redis is configured.
-* No migrations, no email/notification integration (the "customer will be notified" warning is informational), PDF OCR is unsupported, English-only stemming.
+* Docker Compose is verified in **GitHub Actions** (clean Linux runner), not on the author's 8 GB machine; migrations were additionally verified against a real pgvector container locally. Docker Hub rate limits can make CI service-container pulls flaky. No load testing; the in-memory rate limiter is per-process unless Redis is configured.
+* No email/notification integration (the "customer will be notified" warning is informational), PDF OCR is unsupported, English-only stemming.
 
 ## Interview talking points
 * **Why a draft/confirm split?** It makes safety structural: prompt injection can at worst create a pending draft. I tested this with a model that *obeys* injected text.
