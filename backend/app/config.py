@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 120
     action_ttl_minutes: int = 30
 
+    # Demo mode exposes seeded demo API keys to the login screen. MUST be false in production.
+    demo_mode: bool = True
+
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 

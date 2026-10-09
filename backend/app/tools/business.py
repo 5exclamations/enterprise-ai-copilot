@@ -267,7 +267,7 @@ def search_documents(ctx: ToolContext, a: SearchDocsArgs) -> ToolOutput:
     return ToolOutput(
         summary=f"Retrieved {len(hits)} passage(s) from: " + ", ".join(dict.fromkeys(h.document_title for h in hits)) + ".",
         data={"passages": passages},
-        sources=[Source(id=h.source_id, type="document", title=h.document_title + (f" - {h.section}" if h.section else ""),
+        sources=[Source(id=h.source_id, type="document", title=h.document_title + (f" · {h.section.split(' > ')[-1]}" if h.section and h.section.split(" > ")[-1] != h.document_title else ""),
                         snippet=redact_secrets(h.content[:240]).text, meta={"page": h.page, "document_id": h.document_id,
                                                        "version": h.doc_version}) for h in hits])
 

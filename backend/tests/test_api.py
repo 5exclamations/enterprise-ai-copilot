@@ -65,3 +65,11 @@ def test_rate_limit(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "rate_limit_per_minute", 3)
     codes = [client.get("/api/me", headers=hdr("helix-viewer")).status_code for _ in range(5)]
     assert codes == [200, 200, 200, 429, 429]
+
+
+def test_demo_users_gated_by_demo_mode(client, monkeypatch):
+    from app.config import get_settings
+    users = client.get("/api/demo/users").json()
+    assert {u["role"] for u in users} == {"admin", "manager", "viewer"} and all(u["api_key"] for u in users)
+    monkeypatch.setattr(get_settings(), "demo_mode", False)
+    assert client.get("/api/demo/users").status_code == 404

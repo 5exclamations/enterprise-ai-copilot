@@ -26,6 +26,26 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = Field(default=None, max_length=32)
 
 
+@router.get("/demo/users")
+def demo_users(db: Session = Depends(get_db)):
+    """Seeded demo personas for the login screen. Disabled (404) unless DEMO_MODE=true."""
+    from ..auth import hash_key
+    from ..config import get_settings
+    from ..models import User
+    from ..seed import DEMO_KEYS, USERS
+
+    if not get_settings().demo_mode:
+        raise HTTPException(404, "Not found")
+    hashes = {hash_key(k): k for k in DEMO_KEYS.values()}
+    out = []
+    for slug, label, name, email, role in USERS:
+        u = db.scalar(select(User).where(User.email == email))
+        if u and u.api_key_hash in hashes:
+            out.append({"label": label, "name": name, "email": email, "role": role,
+                        "tenant": db.get(Tenant, u.tenant_id).name, "api_key": DEMO_KEYS[label]})
+    return out
+
+
 @router.get("/me")
 def me(p: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     t = db.get(Tenant, p.tenant_id)
