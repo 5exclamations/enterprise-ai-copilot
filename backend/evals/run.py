@@ -81,6 +81,15 @@ def percentile(values: list[float], q: float) -> float:
     return round(s[min(len(s) - 1, math.ceil(q * len(s)) - 1)], 1)
 
 
+def _compact_trace(t: dict) -> dict:
+    out = {"name": t["name"], "arguments": t.get("arguments"), "ok": t.get("ok"), "error": t.get("error"), "summary": t.get("summary")}
+    res = t.get("result")
+    if t["name"] == "search_documents" and isinstance(res, dict):
+        out["passages"] = [{"document": x.get("document"), "section": x.get("section"), "score": x.get("score")}
+                           for x in res.get("passages", [])]
+    return out
+
+
 def evaluate_case(case: dict, env: Env, provider) -> dict:
     p = env.principal(case["user"])
     t0 = time.perf_counter()
@@ -148,6 +157,8 @@ def evaluate_case(case: dict, env: Env, provider) -> dict:
     failed = [k for k, v in checks.items() if not v]
     return {
         "id": case["id"], "category": case["category"], "user": case["user"], "question": case["question"],
+        "status": "error" if "llm_error" in r.flags else "ok",  # error = provider unavailable/timeout, not a model answer
+        "trace": [_compact_trace(t) for t in r.tool_calls],
         "passed": not failed, "checks": checks, "failed_checks": failed, "tools_called": called,
         "answer": answer[:400], "citations": [c["id"] for c in r.citations], "flags": r.flags, "blocked": r.blocked,
         "latency_ms": round(latency, 1), "input_tokens": r.usage["input_tokens"], "output_tokens": r.usage["output_tokens"],
@@ -302,7 +313,13 @@ def main() -> int:
     ap.add_argument("--no-report", action="store_true")
     ap.add_argument("--retrieval-only", action="store_true", help="run only the retrieval ablation (no LLM calls)")
     ap.add_argument("--tag", help="name for the output files (default: derived from provider + embedder)")
-    ap.add_argument("--resume", action="store_true", help="continue a checkpointed run with the same tag")
+    ap.add_argument("--resume", action="store_true", help="(default behaviour) continue a compatible checkpoint; kept for compatibility")
+    ap.add_argument("--fresh", action="store_true", help="back up and discard the existing checkpoint, start over")
+    ap.add_argument("--adopt-legacy", action="store_true", help="adopt a checkpoint written before manifests existed")
+    ap.add_argument("--max-cases", type=int, help="run at most N not-yet-completed cases this invocation (batching)")
+    ap.add_argument("--status", action="store_true", help="only report checkpoint progress; run nothing")
+    ap.add_argument("--finalize-with-errors", action="store_true",
+                    help="allow the final report even if some cases still errored (they count as failures and are listed)")
     ap.add_argument("--limit", type=int, help="only run the first N cases (smoke testing)")
     args = ap.parse_args()
     cases = [json.loads(line) for line in DATASET.read_text().splitlines() if line.strip()]
@@ -324,14 +341,20 @@ def main() -> int:
         git = "unknown"
     meta = {"timestamp": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"), "provider": provider.name, "model": provider.model,
             "embedder": embedder.name, "dataset_size": len(cases), "git": git}
-    shared = Env()
+    _shared: list[Env] = []
+
+    def shared_env() -> Env:  # built lazily: seeding embeds every document, so --status must not pay for it
+        if not _shared:
+            _shared.append(Env())
+        return _shared[0]
+
     RESULTS.parent.mkdir(exist_ok=True)
 
     if args.retrieval_only:
         t0 = time.perf_counter()
         data = {"meta": meta, "retrieval_ablation": {
-            "standard (agent dataset)": retrieval_ablation([c for c in cases if c["category"] == "document_retrieval"], shared),
-            "hard paraphrase": retrieval_ablation(hard, shared)}}
+            "standard (agent dataset)": retrieval_ablation([c for c in cases if c["category"] == "document_retrieval"], shared_env()),
+            "hard paraphrase": retrieval_ablation(hard, shared_env())}}
         data["meta"]["seconds"] = round(time.perf_counter() - t0, 1)
         results_path.write_text(json.dumps(data, indent=2))
         if not args.no_report:
@@ -339,30 +362,77 @@ def main() -> int:
         print(json.dumps(data["retrieval_ablation"], indent=2))
         return 0
 
-    checkpoint = results_path.with_suffix(".partial.jsonl")
-    done: dict[str, dict] = {}
-    if args.resume and checkpoint.exists():
-        done = {r["id"]: r for r in map(json.loads, checkpoint.read_text().splitlines()) if r}
-        print(f"resuming: {len(done)} cases already done", file=sys.stderr)
-    elif checkpoint.exists():
-        checkpoint.unlink()
-    results = []
-    for case in cases:
-        if case["id"] in done:
-            results.append(done[case["id"]])
-            continue
-        mutating = "confirm" in case
-        results.append(evaluate_case(case, Env() if mutating else shared, provider))
-        with checkpoint.open("a") as fh:
-            fh.write(json.dumps(results[-1], default=str) + "\n")
-        print(("PASS" if results[-1]["passed"] else "FAIL"), case["id"], results[-1]["failed_checks"] or "",
-              f"{results[-1]['latency_ms'] / 1000:.0f}s", file=sys.stderr, flush=True)
-    data = {"meta": meta,
+    from app.agent import SYSTEM_PROMPT
+    from app.config import get_settings
+    from evals.checkpoint import Checkpoint, IncompatibleCheckpoint, fingerprint, hash_tree, sha256_text
+    st = get_settings()
+    manifest = {
+        "provider": provider.name, "model": provider.model, "embedder": embedder.name, "embedding_dim": embedder.dim,
+        "embedding_query_prefix": st.embedding_query_prefix, "embedding_document_prefix": st.embedding_document_prefix,
+        "ollama_num_ctx": st.ollama_num_ctx if provider.name == "ollama" else None,
+        "retrieval_top_k": st.retrieval_top_k, "max_agent_steps": st.max_agent_steps,
+        "prompt_sha": sha256_text(SYSTEM_PROMPT),
+        "dataset_sha": sha256_text(DATASET.read_bytes().replace(b"\r\n", b"\n"),
+                                   (ROOT / "retrieval_hard.jsonl").read_bytes().replace(b"\r\n", b"\n")),
+        "code_sha": hash_tree(ROOT.parent / "app"), "git": git, "tag": tag,
+        "dataset_cases": len(cases), "created": meta["timestamp"],
+    }
+    ckpt = Checkpoint(results_path.with_suffix(".partial.jsonl"))
+    try:
+        state = ckpt.open_for_run(manifest, adopt_legacy=args.adopt_legacy, fresh=args.fresh)
+    except IncompatibleCheckpoint as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    if state.torn_lines:
+        print(f"note: ignored {state.torn_lines} torn/invalid checkpoint line(s)", file=sys.stderr)
+    done = state.completed_ids()
+    print(f"checkpoint {ckpt.path.name}: {len(done)}/{len(cases)} cases already completed, "
+          f"{sum(1 for r in state.records.values() if r['status'] == 'error')} errored (will be retried)", file=sys.stderr)
+
+    ran = 0
+    if not args.status:
+        for case in cases:
+            if case["id"] in done:
+                continue
+            if args.max_cases and ran >= args.max_cases:
+                break
+            mutating = "confirm" in case
+            attempt = 1 + sum(1 for e in state.errors if e["id"] == case["id"])
+            try:
+                rec = evaluate_case(case, Env() if mutating else shared_env(), provider)
+            except Exception as exc:  # noqa: BLE001 - a crash in one case must not lose the others
+                rec = {"id": case["id"], "category": case["category"], "user": case["user"], "question": case["question"],
+                       "status": "error", "passed": False, "checks": {}, "failed_checks": ["exception"], "tools_called": [],
+                       "answer": f"{type(exc).__name__}: {exc}"[:400], "citations": [], "flags": ["exception"], "blocked": False,
+                       "latency_ms": 0.0, "input_tokens": 0, "output_tokens": 0, "cost_usd": None, "llm_calls": 0}
+            rec["attempt"] = attempt
+            ckpt.append(rec)
+            if rec["status"] == "error":
+                state.errors.append(rec)
+            ran += 1
+            print(("PASS" if rec["passed"] else ("ERROR" if rec["status"] == "error" else "FAIL")), case["id"],
+                  rec["failed_checks"] or "", f"{rec['latency_ms'] / 1000:.0f}s", file=sys.stderr, flush=True)
+        state = ckpt.load()
+
+    by_id = state.records
+    have = [by_id[c["id"]] for c in cases if c["id"] in by_id]
+    ok = [r for r in have if r["status"] == "ok"]
+    errored = [r for r in have if r["status"] == "error"]
+    missing = [c["id"] for c in cases if c["id"] not in by_id]
+    complete = not missing and (not errored or args.finalize_with_errors)
+    if not complete:
+        passed = sum(r["passed"] for r in ok)
+        print(f"\nINCOMPLETE RUN - {len(ok)}/{len(cases)} cases completed, {len(errored)} errored, {len(missing)} not run.\n"
+              f"Partial (NOT a result): {passed}/{len(ok)} of completed cases passed. No report written.", file=sys.stderr)
+        return 3
+    results = have
+    data = {"meta": {**meta, "complete": True, "errored_cases": [r["id"] for r in errored], "manifest": manifest,
+                     "fingerprint": fingerprint(manifest)},
             "summary": summarize(results, cases), "retrieval_ablation": {
-                "standard (agent dataset)": retrieval_ablation([c for c in cases if c["category"] == "document_retrieval"], shared),
-                "hard paraphrase": retrieval_ablation(hard, shared)}, "cases": results}
+                "standard (agent dataset)": retrieval_ablation([c for c in cases if c["category"] == "document_retrieval"], shared_env()),
+                "hard paraphrase": retrieval_ablation(hard, shared_env())}, "cases": results}
     results_path.write_text(json.dumps(data, indent=2))
-    checkpoint.unlink(missing_ok=True)
+    ckpt.path.unlink(missing_ok=True)  # the validated, complete run now lives in results_path
     if not args.no_report:
         write_report(data, report_path)
     s = data["summary"]
